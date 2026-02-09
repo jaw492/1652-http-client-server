@@ -93,7 +93,7 @@ main(int argc, char ** argv)
 
     strcat(buf, "GET ");
     strcat(buf, server_path);
-    strcat(buf, " HTTP/1.0\r\n");
+    strcat(buf, " HTTP/1.0\r\n\r\n");
     len = strlen(buf);
 
     printf("%s\n", buf);
