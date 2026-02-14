@@ -18,10 +18,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 
 #define BUFSIZE 1024
 #define FILENAMESIZE 100
 
+static const struct timeval Timeout = {10, 0};
 
 static int 
 handle_connection(int sock) 
@@ -37,8 +39,6 @@ handle_connection(int sock)
                             "<h2>404 FILE NOT FOUND</h2>\n"				\
                             "</body></html>\n";
     
-  (void)notok_response;  // DELETE ME
-  (void)ok_response_f;   // DELETE ME
 
     /* first read loop -- get request and headers*/
 
@@ -63,6 +63,13 @@ main(int argc, char ** argv)
     int server_port = -1;
     int ret         =  0;
     int sock        = -1;
+    int i, s, c, len, res;
+    char buf[BUFSIZE];
+    struct sockaddr_in saddr, claddr;
+    fd_set read_mask, write_mask, error_mask;
+    fd_set tmp_rmask;
+    int                num;
+    struct timeval     tmp_timeout;
 
     /* parse command line args */
     if (argc != 2) {
@@ -78,28 +85,53 @@ main(int argc, char ** argv)
     }
     
     /* initialize and make socket */
-
+    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+        perror("tcp_server: socket error");
+        exit(-1);
+    }
     /* set server address */
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sin_family = AF_INET;
+    saddr.sin_addr.s_addr = INADDR_ANY;
+    saddr.sin_port = htons(server_port);
 
     /* bind listening socket */
-
+    if (bind(s, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
+        perror("tcp_server: bind error");
+        exit(-1);
+    }
     /* start listening */
+    if (listen(s, 32) < 0) {
+        perror("tcp_server: listen error");
+        exit(-1);
+    }
+
+    /* Zero out all masks to initialize */
+    FD_ZERO(&read_mask);
+    FD_ZERO(&write_mask);
+    FD_ZERO(&error_mask);
+    /* Set up mask for file descriptors we want to read from */
+    FD_SET(s, &read_mask);
 
     /* connection handling loop: wait to accept connection */
 
-    while (1) {
+    while ((c = accept(s, NULL, NULL)) >= 0) {
     
         /* create read list */
-        
+        if ((len = recv(c, buf, sizeof(buf) - 1, 0)) <= 0)  {
+            perror("tcp_server: recv error");
+            exit(-1);
+        }
         /* do a select() */
-        
+        tmp_rmask = read_mask;
+        tmp_timeout = Timeout;
+
+        num = select(FD_SETSIZE, &tmp_rmask, &write_mask, &error_mask, &tmp_timeout);
         /* process sockets that are ready:
          *     for the accept socket, add accepted connection to connections
          *     for a connection socket, handle the connection
          */
         
         ret = handle_connection(sock);
-        
-        (void)ret;  // DELETE ME
     }
 }
