@@ -89,14 +89,11 @@ main(int argc, char ** argv)
         perror("tcp_client: could not connect to server");
         exit(-1);
     }
-    printf("Connected!\n");
 
     strcat(buf, "GET ");
     strcat(buf, server_path);
     strcat(buf, " HTTP/1.0\r\n\r\n");
     len = strlen(buf);
-
-    printf("%s\n", buf);
 
     /* send request message */
     if ((res = send(s, buf, len, 0)) <= 0) {
@@ -113,7 +110,6 @@ main(int argc, char ** argv)
     FD_SET(s, &read_mask);
     FD_SET((long)0, &read_mask);
 
-    //while(1) {
     tmp_rmask = read_mask;
 
     num = select(FD_SETSIZE, &tmp_rmask, &write_mask, &error_mask, NULL);
@@ -136,15 +132,35 @@ main(int argc, char ** argv)
 
             buf[res] = '\0';
 
-            printf("Received %d bytes: %s\n", res, buf);
-            /*
-            close(s);
-            return 0;
-            */
+            char response_code[4] = {0};
+            for(int i=0; i<res; i++){
+                if(buf[i]==' '){
+                    for(int x=1; x<=3; x++){
+                        response_code[x-1] = buf[i+x];
+                    }
+                    break;
+                }
+            }
+
+            if(strcmp(response_code, "200") != 0){
+                fprintf(stderr, "%s", buf);
+                exit(-1);
+            }
+
+            char *body = buf;
+            for(int i=0; i<res-4; i++){
+                if(buf[i]=='\r' && buf[i+1]=='\n' &&
+                    buf[i+2]=='\r' && buf[i+3]=='\n'){
+                    body = body+i+4;
+                    break;
+                }
+            }
+
+            printf("%s", body);
         }
     }
     /* second read loop -- print out the rest of the response: real web content */
-   // }
+
     /* close socket */
     close(s);
     return 0;
