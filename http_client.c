@@ -118,8 +118,6 @@ main(int argc, char ** argv)
     /* examine return code */   
     // Skip protocol version (e.g. "HTTP/1.0")
     // Normal reply has return code 200
-
-    /* print first part of response: header, error code, etc. */
     if (num > 0) {
         if (FD_ISSET(s, &tmp_rmask)) {
             fromlen = sizeof(raddr);
@@ -132,21 +130,24 @@ main(int argc, char ** argv)
 
             buf[res] = '\0';
 
+            // find and store HTTP reponse code
             char response_code[4] = {0};
             for(int i=0; i<res; i++){
                 if(buf[i]==' '){
-                    for(int x=1; x<=3; x++){
+                    for(int x=1; x<=3; x++){ // each letter of code, ex. "200"
                         response_code[x-1] = buf[i+x];
                     }
                     break;
                 }
             }
 
+            // output entire response to stderr when response code shows failure
             if(strcmp(response_code, "200") != 0){
                 fprintf(stderr, "%s", buf);
                 exit(-1);
             }
 
+            // find the split between headers and HTML
             char *body = buf;
             for(int i=0; i<res-4; i++){
                 if(buf[i]=='\r' && buf[i+1]=='\n' &&
@@ -155,11 +156,10 @@ main(int argc, char ** argv)
                     break;
                 }
             }
-
+            // print HTML response with no headers
             printf("%s", body);
         }
     }
-    /* second read loop -- print out the rest of the response: real web content */
 
     /* close socket */
     close(s);
