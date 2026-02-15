@@ -27,49 +27,93 @@ static const struct timeval Timeout = {10, 0};
 
 static int 
 handle_connection(int sock) 
-{
+{   
+    char buf[BUFSIZE]; //wrote this here because if I wrote in main compiler couldn't see it here
+    int len, res;
+    char * ok_response_f  = "HTTP/1.0 200 OK\r\n"        \
+        					"Content-type: text/plain\r\n"                  \
+        					"Content-length: %d \r\n\r\n";
  
-    char * ok_response_f  = "HTTP/1.0 200 OK\r\n"						\
-                            "Content-type: text/plain\r\n"				\
-                            "Content-length: %d \r\n\r\n";
-    
-    char * notok_response = "HTTP/1.0 404 FILE NOT FOUND\r\n"			\
-                            "Content-type: text/html\r\n\r\n"			\
-                            "<html><body bgColor=black text=white>\n"	\
-                            "<h2>404 FILE NOT FOUND</h2>\n"				\
-                            "</body></html>\n";
-    
-
+    char * notok_response = "HTTP/1.0 404 FILE NOT FOUND\r\n"   \
+        					"Content-type: text/html\r\n\r\n"                       \
+        					"<html><body bgColor=black text=white>\n"               \
+        					"<h2>404 FILE NOT FOUND</h2>\n"
+        					"</body></html>\n";
+    int status = 1;
     /* first read loop -- get request and headers*/
-
+    //what does this if statement do? mean?
+    /*it checks if the response is at least a response. it places the response in buffer buf. The
+      the caller specifies size of buf in by buf...how does that work. Why is size sizeof(buf) - 1)?*/
+    if ((len = recv(sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
+            perror("tcp_server: bind error");
+            exit(-1);
+    }
     /* parse request to get file name */
-
-    /* Assumption: For this project you only need to handle GET requests and filenames that contain no spaces */
-  
+    int spaces = 0;
+    int reading_toggle = -1;
+    int iterator = 0;
+    int iterator2 = 0;
+    char file_path[BUFSIZE] = {0};
+    while(spaces < 2 && iterator < BUFSIZE){
+        if(buf[iterator]==' '){
+            reading_toggle*=-1;
+            spaces++;
+        }
+        if(reading_toggle==1 && buf[iterator]!=' '){
+            file_path[iterator2++]=buf[iterator];
+        }
+        iterator++;
+    }
+    //printf("'%s'\n",file_path);
+    /* Assumption: this is a GET request and filename contains no spaces*/
     /* open and read the file */
-  
-    /* send response */
-
-    /* close socket and free space */
-  
-    return 0;
+	FILE *file = fopen(file_path, "r");
+    size_t size = BUFSIZE-strlen(ok_response_f);
+    char file_buf[size];
+    
+    if (file){
+        //read the file and save somewhere so i can craft response
+        fread(file_buf, size, 1, file);
+        fclose(file);
+    } else{
+        status = 0;
+    };
+	/* send response */
+    //printf("STATUS:%d\n",status);
+    if(status){
+        sprintf(buf, "%s%s", ok_response_f,file_buf);
+        len = strlen(buf);
+        if ((res = send(sock, buf, len, 0)) <= 0) {
+            perror("tcp_server: send error");
+            exit(-1);
+        }
+    }
+    else{
+        len = strlen(notok_response);
+        if ((res = send(sock, notok_response, len, 0)) <= 0) {
+            perror("tcp_server: send error");
+            exit(-1);
+        }
+    }
+    /* close socket and free pointers */
+    close(sock);
+	return 0;
 }
 
-
-
-int
-main(int argc, char ** argv)
+int main(int argc, char ** argv)
 {
     int server_port = -1;
     int ret         =  0;
     int sock        = -1;
-    int i, s, c, len, res;
+    int client_sock = -1;
+    int len, res;
+    socklen_t fromlen;
     char buf[BUFSIZE];
     struct sockaddr_in saddr, claddr;
     fd_set read_mask, write_mask, error_mask;
     fd_set tmp_rmask;
-    int                num;
-    struct timeval     tmp_timeout;
+    int num;
+    struct timeval tmp_timeout;
 
     /* parse command line args */
     if (argc != 2) {
@@ -85,7 +129,7 @@ main(int argc, char ** argv)
     }
     
     /* initialize and make socket */
-    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+    if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
         perror("tcp_server: socket error");
         exit(-1);
     }
@@ -96,12 +140,12 @@ main(int argc, char ** argv)
     saddr.sin_port = htons(server_port);
 
     /* bind listening socket */
-    if (bind(s, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
+    if (bind(sock, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
         perror("tcp_server: bind error");
         exit(-1);
     }
     /* start listening */
-    if (listen(s, 32) < 0) {
+    if (listen(sock, 32) < 0) {
         perror("tcp_server: listen error");
         exit(-1);
     }
@@ -111,14 +155,14 @@ main(int argc, char ** argv)
     FD_ZERO(&write_mask);
     FD_ZERO(&error_mask);
     /* Set up mask for file descriptors we want to read from */
-    FD_SET(s, &read_mask);
+    FD_SET(sock, &read_mask);
 
     /* connection handling loop: wait to accept connection */
 
-    while ((c = accept(s, NULL, NULL)) >= 0) {
+    while ((client_sock = accept(sock, NULL, NULL)) >= 0) {
     
         /* create read list */
-        if ((len = recv(c, buf, sizeof(buf) - 1, 0)) <= 0)  {
+        if ((len = recv(client_sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
             perror("tcp_server: recv error");
             exit(-1);
         }
@@ -127,11 +171,32 @@ main(int argc, char ** argv)
         tmp_timeout = Timeout;
 
         num = select(FD_SETSIZE, &tmp_rmask, &write_mask, &error_mask, &tmp_timeout);
-        /* process sockets that are ready:
-         *     for the accept socket, add accepted connection to connections
-         *     for a connection socket, handle the connection
-         */
+        if (num > 0) {
+            if (FD_ISSET(sock, &tmp_rmask)) {
+                /* Receive datagram from client */
+                fromlen = sizeof(claddr); 
+
+                if ((len = recvfrom(sock, buf, sizeof(buf) - 1, 0,
+                                    (struct sockaddr *)&claddr, 
+                                    &fromlen)) <= 0) {
+                    perror("tcp_server: recvfrom error"); 
+                    exit(-1);
+                }
+
+
+                /* Send modified message to client (using address claddr filled in by
+                 * recvfrom call) */
+                if ((res = sendto(sock, buf, len, 0, 
+                                  (struct sockaddr *)&claddr, 
+                                  fromlen)) <= 0) {
+                    perror("tcp_server: sendto error"); 
+                    exit(-1);
+                }
+
+            }
+        }
         
         ret = handle_connection(sock);
     }
+    return ret;
 }
