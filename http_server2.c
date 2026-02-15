@@ -106,10 +106,7 @@ int main(int argc, char ** argv)
     int ret         =  0;
     int sock        = -1;
     int client_sock = -1;
-    int len, res;
-    socklen_t fromlen;
-    char buf[BUFSIZE];
-    struct sockaddr_in saddr, claddr;
+    struct sockaddr_in saddr;
     fd_set read_mask, write_mask, error_mask;
     fd_set tmp_rmask;
     int num;
@@ -162,10 +159,7 @@ int main(int argc, char ** argv)
     while ((client_sock = accept(sock, NULL, NULL)) >= 0) {
     
         /* create read list */
-        if ((len = recv(client_sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
-            perror("tcp_server: recv error");
-            exit(-1);
-        }
+        
         /* do a select() */
         tmp_rmask = read_mask;
         tmp_timeout = Timeout;
@@ -173,30 +167,9 @@ int main(int argc, char ** argv)
         num = select(FD_SETSIZE, &tmp_rmask, &write_mask, &error_mask, &tmp_timeout);
         if (num > 0) {
             if (FD_ISSET(sock, &tmp_rmask)) {
-                /* Receive datagram from client */
-                fromlen = sizeof(claddr); 
-
-                if ((len = recvfrom(sock, buf, sizeof(buf) - 1, 0,
-                                    (struct sockaddr *)&claddr, 
-                                    &fromlen)) <= 0) {
-                    perror("tcp_server: recvfrom error"); 
-                    exit(-1);
-                }
-
-
-                /* Send modified message to client (using address claddr filled in by
-                 * recvfrom call) */
-                if ((res = sendto(sock, buf, len, 0, 
-                                  (struct sockaddr *)&claddr, 
-                                  fromlen)) <= 0) {
-                    perror("tcp_server: sendto error"); 
-                    exit(-1);
-                }
-
+                ret = handle_connection(sock);
             }
         }
-        
-        ret = handle_connection(sock);
     }
     return ret;
 }
