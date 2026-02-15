@@ -25,80 +25,81 @@
 
 
 static int 
-handle_connection(int sock) 
+handle_connection(int client_sock) 
 {   
-    char buf[BUFSIZE]; //wrote this here because if I wrote in main compiler couldn't see it here
+    //initialize buffer
+    char buf[BUFSIZE] = {0};
     int len, res;
+
+    //response to send when file exists and can be sent
     char * ok_response_f  = "HTTP/1.0 200 OK\r\n"        \
         					"Content-type: text/plain\r\n"                  \
         					"Content-length: %d \r\n\r\n";
  
+    //response to send when file does not exist or cannot be sent
     char * notok_response = "HTTP/1.0 404 FILE NOT FOUND\r\n"   \
         					"Content-type: text/html\r\n\r\n"                       \
         					"<html><body bgColor=black text=white>\n"               \
         					"<h2>404 FILE NOT FOUND</h2>\n"
         					"</body></html>\n";
-    int status = 1;
-    /* first read loop -- get request and headers*/
-    //what does this if statement do? mean?
-    /*it checks if the response is at least a response. it places the response in buffer buf. The
-      the caller specifies size of buf in by buf...how does that work. Why is size sizeof(buf) - 1)?*/
-    if ((len = recv(sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
-            perror("tcp_server: bind error");
+
+    //receive from client socket and write it to buffer
+    if ((len = recv(client_sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
+            perror("tcp_server: recv error");
             exit(-1);
     }
-    /* parse request to get file name */
-    int spaces = 0;
-    int reading_toggle = -1;
-    int iterator = 0;
-    int iterator2 = 0;
-    char file_path[BUFSIZE] = {0};
-    while(spaces < 2 && iterator < BUFSIZE){
-        if(buf[iterator]==' '){
-            reading_toggle*=-1;
+
+    //buffer is null terminated
+    buf[BUFSIZE] = '\0';
+
+    //printf("'%s'\n",buf);
+    //parse file path from request
+    char file_path[FILENAMESIZE] = {0};
+    //find first space, start reading file path. find second space, stop reading file path.
+    int spaces = 0, x = 0;
+    for(int i = 0; spaces < 2 && i < BUFSIZE; i++){
+        if(buf[i] == ' '){
             spaces++;
+            continue;
         }
-        if(reading_toggle==1 && buf[iterator]!=' '){
-            file_path[iterator2++]=buf[iterator];
-        }
-        iterator++;
+        if(spaces == 1)
+            file_path[x++]=buf[i];
     }
-    //printf("'%s'\n",file_path);
-    /* Assumption: this is a GET request and filename contains no spaces*/
-    /* open and read the file */
+    file_path[x] = '\0';
+    //printf("'%s'\n", file_path);
+
+    //open file
 	FILE *file = fopen(file_path, "r");
     size_t size = BUFSIZE-strlen(ok_response_f);
     char file_buf[size];
     
     if (file){
-        //read the file and save somewhere so i can craft response
+        //read file contents into file_buf
         fread(file_buf, size, 1, file);
         fclose(file);
-    } else{
-        status = 0;
-    };
-	/* send response */
-    //printf("STATUS:%d\n",status);
-    if(status){
-        sprintf(buf, "%s%s", ok_response_f,file_buf);
+
+        //craft response
+        int content_length = strlen(file_buf);
+        sprintf(buf, ok_response_f, content_length);
+        strcat(buf, file_buf);
+
+        //send response
         len = strlen(buf);
-        if ((res = send(sock, buf, len, 0)) <= 0) {
+        if ((res = send(client_sock, buf, len, 0)) <= 0) {
             perror("tcp_server: send error");
             exit(-1);
         }
-    }
-    else{
+    } else{
+        //send error response
         len = strlen(notok_response);
-        if ((res = send(sock, notok_response, len, 0)) <= 0) {
+        if ((res = send(client_sock, notok_response, len, 0)) <= 0) {
             perror("tcp_server: send error");
             exit(-1);
         }
     }
-    /* close socket and free pointers */
-    close(sock);
+    close(client_sock);
 	return 0;
 }
-
 
 int 
 main(int argc, char ** argv)
@@ -106,7 +107,8 @@ main(int argc, char ** argv)
     int server_port = -1;
     int ret         =  0;
     int sock        = -1;
-    struct sockaddr_in saddr; //I wrote this line because memset used saddr
+    int client_sock = -1;
+    struct sockaddr_in saddr;
 
     /* parse command line args */
     if (argc != 2) {
@@ -145,16 +147,16 @@ main(int argc, char ** argv)
         exit(-1);
     }
     /* start listening */
-    if (listen(sock, 0) < 0) { //max queued connections is 32
+    if (listen(sock, 32) < 0) {
         perror("tcp_server: listen error");
         exit(-1);
     }
 
-    int client_sock;
-    /* connection handling loop: wait to accept connection */
+    //wait for connection
     while ((client_sock = accept(sock, NULL, NULL)) >=0) {
-        /* handle connections */
-        ret = handle_connection(client_sock);
+        handle_connection(client_sock); //handle connection
     }
-    return(ret);
+
+    close(sock);
+    return ret;
 }

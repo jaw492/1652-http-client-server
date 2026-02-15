@@ -47,13 +47,13 @@ handle_connection(int client_sock)
     //receive from client socket and write it to buffer
     if ((len = recv(client_sock, buf, sizeof(buf) - 1, 0)) <= 0)  {
             perror("tcp_server: recv error");
-            return(-1);
+            exit(-1);
     }
 
     //buffer is null terminated
     buf[BUFSIZE] = '\0';
 
-    printf("'%s'\n",buf);
+    //printf("'%s'\n",buf);
     //parse file path from request
     char file_path[FILENAMESIZE] = {0};
     //find first space, start reading file path. find second space, stop reading file path.
@@ -67,7 +67,7 @@ handle_connection(int client_sock)
             file_path[x++]=buf[i];
     }
     file_path[x] = '\0';
-    printf("'%s'\n", file_path);
+    //printf("'%s'\n", file_path);
 
     //open file
 	FILE *file = fopen(file_path, "r");
