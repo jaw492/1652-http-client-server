@@ -63,7 +63,7 @@ handle_connection(int sock)
         }
         iterator++;
     }
-    printf("'%s'\n",file_path);
+    //printf("'%s'\n",file_path);
     /* Assumption: this is a GET request and filename contains no spaces*/
     /* open and read the file */
 	FILE *file = fopen(file_path, "r");
@@ -78,7 +78,7 @@ handle_connection(int sock)
         status = 0;
     };
 	/* send response */
-    printf("STATUS:%d\n",status);
+    //printf("STATUS:%d\n",status);
     if(status){
         sprintf(buf, "%s%s", ok_response_f,file_buf);
         len = strlen(buf);
@@ -149,10 +149,12 @@ main(int argc, char ** argv)
         perror("tcp_server: listen error");
         exit(-1);
     }
+
+    int client_sock;
     /* connection handling loop: wait to accept connection */
-    while ((sock = accept(sock, NULL, NULL)) >=0) {
+    while ((client_sock = accept(sock, NULL, NULL)) >=0) {
         /* handle connections */
-        ret = handle_connection(sock);
+        ret = handle_connection(client_sock);
     }
     return(ret);
 }
