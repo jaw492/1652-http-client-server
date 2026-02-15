@@ -29,7 +29,7 @@ static int
 handle_connection(int client_sock) 
 {   
     //initialize buffer
-    char buf[BUFSIZE];
+    char buf[BUFSIZE] = {0};
     int len, res;
 
     //response to send when file exists and can be sent
