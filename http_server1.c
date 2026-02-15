@@ -50,7 +50,7 @@ handle_connection(int client_sock)
     }
 
     //buffer is null terminated
-    buf[BUFSIZE] = '\0';
+    buf[BUFSIZE-1] = '\0';
 
     //printf("'%s'\n",buf);
     //parse file path from request
