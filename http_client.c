@@ -61,10 +61,9 @@ main(int argc, char ** argv)
     int s, num, len, res;
     char buf[BUFSIZE] = {0};
     struct hostent *hp;
-    struct sockaddr_in saddr, raddr;
+    struct sockaddr_in saddr;
     fd_set read_mask, write_mask, error_mask;
     fd_set tmp_rmask;
-    socklen_t fromlen;
 
     /* make socket */
     if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -109,7 +108,6 @@ main(int argc, char ** argv)
     FD_ZERO(&error_mask);
 
     FD_SET(s, &read_mask);
-    FD_SET((long)0, &read_mask);
 
     tmp_rmask = read_mask;
 
@@ -119,46 +117,51 @@ main(int argc, char ** argv)
     /* examine return code */   
     // Skip protocol version (e.g. "HTTP/1.0")
     // Normal reply has return code 200
+    int parsed = 0; // has header been parsed yet
+    char response_code[4] = {0}; // HTTP reponse code
+    char *body = NULL; // location of body within header data
     if (num > 0) {
         if (FD_ISSET(s, &tmp_rmask)) {
-            fromlen = sizeof(raddr);
 
-            if((res = recvfrom(s, buf, sizeof(buf) - 1, 0,
-             (struct sockaddr *)&raddr, &fromlen)) < 0) {
-                perror("tcp_client: recvfrom error");
-                exit(-1);
-            }
+            // while still receving data from server
+            while((res = recv(s, buf, sizeof(buf), 0)) > 0) {
 
-            buf[res] = '\0';
-
-            // find and store HTTP reponse code
-            char response_code[4] = {0};
-            for(int i=0; i<res; i++){
-                if(buf[i]==' '){
-                    for(int x=1; x<=3; x++){ // each letter of code, ex. "200"
-                        response_code[x-1] = buf[i+x];
+                // when header unparsed, parse it and output
+                if(!parsed){
+                    for(int i=0; i<res; i++){
+                        if(buf[i]==' '){
+                            for(int x=1; x<=3; x++){ // each letter of code, ex. "200"
+                                response_code[x-1] = buf[i+x];
+                            }
+                            break;
+                        }
                     }
-                    break;
+                    // find the split between headers and HTML
+                    for(int i=0; i<res-4; i++){
+                        if(buf[i]=='\r' && buf[i+1]=='\n' &&
+                            buf[i+2]=='\r' && buf[i+3]=='\n'){
+                            body = buf+i+4;
+                            parsed = 1;
+                            break;
+                        }
+                    }
+
+                    // output error block or parsed body block after header
+                    if(strcmp(response_code, "200") != 0){
+                        fwrite(buf, 1, res, stderr);
+                    } else {
+                        fwrite(body, 1, res - (body - buf), stdout);
+                    }
+                    continue;
+                }
+
+                // after parsing, send either rest of error blocks, or rest of body blocks
+                if(strcmp(response_code, "200") != 0){
+                    fwrite(buf, 1, res, stderr);
+                } else{
+                    fwrite(buf, 1, res, stdout);
                 }
             }
-
-            // output entire response to stderr when response code shows failure
-            if(strcmp(response_code, "200") != 0){
-                fprintf(stderr, "%s", buf);
-                exit(-1);
-            }
-
-            // find the split between headers and HTML
-            char *body = buf;
-            for(int i=0; i<res-4; i++){
-                if(buf[i]=='\r' && buf[i+1]=='\n' &&
-                    buf[i+2]=='\r' && buf[i+3]=='\n'){
-                    body = body+i+4;
-                    break;
-                }
-            }
-            // print HTML response with no headers
-            printf("%s", body);
         }
     }
 

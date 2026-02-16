@@ -50,7 +50,7 @@ handle_connection(int client_sock)
     }
 
     //buffer is null terminated
-    buf[BUFSIZE-1] = '\0';
+    buf[len] = '\0';
 
     //printf("'%s'\n",buf);
     //parse file path from request
@@ -70,25 +70,35 @@ handle_connection(int client_sock)
 
     //open file
 	FILE *file = fopen(file_path, "r");
-    size_t size = BUFSIZE-strlen(ok_response_f);
-    char file_buf[size];
-    
+    //size_t size = BUFSIZE-strlen(ok_response_f);
+    //char file_buf[size];
+
     if (file){
-        //read file contents into file_buf
-        fread(file_buf, size, 1, file);
-        fclose(file);
+        // find file size
+        fseek(file, 0, SEEK_END);
+        int content_length = ftell(file);
+        fseek(file, 0, SEEK_SET);
 
-        //craft response
-        int content_length = strlen(file_buf);
+        // craft header
         sprintf(buf, ok_response_f, content_length);
-        strcat(buf, file_buf);
-
-        //send response
         len = strlen(buf);
-        if ((res = send(client_sock, buf, len, 0)) <= 0) {
+
+        // send header to client
+        if((res = send(client_sock, buf, len, 0)) <= 0) {
             perror("tcp_server: send error");
             exit(-1);
         }
+
+        // send rest of file
+        long int bytes_read;
+        while ((bytes_read = fread(buf, 1, BUFSIZE-1, file)) > 0) {
+            if((res = send(client_sock, buf, bytes_read, 0)) <= 0) {
+                perror("tcp_server: send error");
+                exit(-1);
+            }
+        }
+
+        fclose(file);
     } else{
         //send error response
         len = strlen(notok_response);
